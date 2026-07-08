@@ -1,0 +1,11 @@
+{
+  "name": "tuft-kvm-web",
+  "private": true,
+  "description": "Hosted JetKVM viewer (LLP 0065 T3) — static build of upstream jetkvm/kvm ui/, deployed as an assets-only Worker",
+  "scripts": {
+    "deploy:staging": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.24.0"
+  }
+}

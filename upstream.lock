@@ -1,0 +1,5 @@
+# Upstream jetkvm/kvm ref the viewer is built from (LLP 0065 "Fork
+# Discipline" — the UI is NOT forked; we build pristine upstream with only
+# an env file). Bump deliberately: new refs should be bench-tested against
+# the staging kvm-api first (firmware and cloud protocol move together).
+KVM_REF=b3c29a44d9e2862b8ff7530830781803ce27b060

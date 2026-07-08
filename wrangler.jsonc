@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Hosted JetKVM viewer (LLP 0065 T3): upstream jetkvm/kvm `ui/` built in
+  // cloud mode, served as a static SPA on its own subdomain. Dedicated origin
+  // is deliberate — see LLP 0065 "Viewer Hosting: Dedicated Subdomain, Not
+  // The Dashboard Origin" (origin isolation for a third-party frontend).
+  //
+  // Staging-only Worker for now; production (`kvm.tuft.dev`) lands with the
+  // LLP 0013 promotion. @ref LLP 0013#2026-07-07-kvm-api-staging
+  "name": "tuft-kvm-web-staging",
+  "compatibility_date": "2026-06-01",
+  "workers_dev": false,
+  // Assets-only Worker: no script, just the SPA. The build is produced by
+  // .github/workflows/tuft-kvm-web.yml from the upstream ref pinned in
+  // upstream.lock — `dist/` is never committed.
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  },
+  "routes": [{ "pattern": "kvm-staging.tuft.dev", "custom_domain": true }]
+}

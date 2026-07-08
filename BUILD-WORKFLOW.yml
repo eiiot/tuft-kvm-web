@@ -1,0 +1,115 @@
+# Hosted JetKVM viewer (LLP 0065 T3). Builds upstream jetkvm/kvm's ui/ at the
+# ref pinned in kvm-web/upstream.lock (no fork — env file only) and deploys it
+# as the assets-only Worker in kvm-web/wrangler.jsonc.
+#
+# `CLOUDFLARE_API_TOKEN` is the Workers-deploy token (same secret tuft-web.yml
+# uses). Staging-only for now; a production job lands with the LLP 0013
+# promotion.
+
+name: KVM viewer
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - kvm-web/**
+      - .github/workflows/tuft-kvm-web.yml
+  push:
+    branches: [staging]
+    paths:
+      - kvm-web/**
+      - .github/workflows/tuft-kvm-web.yml
+
+concurrency:
+  group: tuft-kvm-web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & deploy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: kvm-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check out pinned upstream jetkvm/kvm
+        run: |
+          source upstream.lock
+          git clone --filter=blob:none https://github.com/jetkvm/kvm kvm-src
+          git -C kvm-src checkout "$KVM_REF"
+
+      - name: Apply Tuft overlay
+        # White-labeling + Tuft auth surfaces (LLP 0065): overlay files are
+        # copied over the pristine checkout, then brand strings are swapped.
+        # Keep the overlay minimal — every file here shadows upstream and is
+        # re-validated when upstream.lock bumps.
+        run: |
+          cp -R overlay/. kvm-src/
+          sed -i 's/JetKVM Cloud/Tuft KVM/g; s/JetKVM/KVM/g' kvm-src/ui/localization/messages/*.json
+          sed -i 's/<title>JetKVM<\/title>/<title>Tuft KVM<\/title>/; s/content="JetKVM"/content="Tuft KVM"/' kvm-src/ui/index.html
+          # Upstream docs links (empty-state "Learn more", troubleshooting
+          # overlays, password reset) point at Tuft docs instead.
+          grep -rl 'jetkvm\.com/docs' kvm-src/ui/src | xargs sed -i 's|https://jetkvm\.com/docs[^"'"'"']*|https://docs.tuft.dev/|g'
+
+      - name: Build viewer (cloud-staging mode)
+        run: |
+          printf 'VITE_CLOUD_API=https://kvm-api-staging.tuft.dev\n' > kvm-src/ui/.env.cloud-staging
+          cd kvm-src/ui
+          npm ci --no-audit --no-fund
+          npm run build:staging
+
+      - name: Stage assets
+        run: |
+          rm -rf dist
+          cp -R kvm-src/ui/dist dist
+          npm ci --no-audit --no-fund
+
+      - name: Validate Worker config
+        run: npx wrangler deploy --dry-run
+
+      - name: Deploy staging
+        if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Sync source mirror (GPL corresponding source)
+        # kvm-web/ IS the corresponding source for the bundle just conveyed:
+        # pinned upstream ref + overlay + this workflow. Deploy-coupled so the
+        # mirror can never drift from what users receive. Inert until the
+        # deploy key secret exists (eiiot/tuft-kvm-web: Settings -> Deploy
+        # keys, write access; private half as KVM_WEB_MIRROR_DEPLOY_KEY).
+        if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+        env:
+          MIRROR_KEY: ${{ secrets.KVM_WEB_MIRROR_DEPLOY_KEY }}
+        run: |
+          if [ -z "$MIRROR_KEY" ]; then
+            echo "::notice::KVM_WEB_MIRROR_DEPLOY_KEY unset — skipping source mirror sync"
+            exit 0
+          fi
+          mkdir -p ~/.ssh && printf '%s\n' "$MIRROR_KEY" > ~/.ssh/mirror && chmod 600 ~/.ssh/mirror
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/mirror -o StrictHostKeyChecking=accept-new"
+          git clone --depth 1 git@github.com:eiiot/tuft-kvm-web.git /tmp/mirror
+          rsync -a --delete --exclude .git --exclude node_modules --exclude dist --exclude kvm-src ./ /tmp/mirror/
+          cp ../.github/workflows/tuft-kvm-web.yml /tmp/mirror/BUILD-WORKFLOW.yml
+          source upstream.lock
+          cd /tmp/mirror && git add -A
+          if git -c user.name="tuft-ci" -c user.email="ci@tuft.dev" commit -m "sync: expo/tuft@${GITHUB_SHA:0:7} (upstream $KVM_REF)"; then
+            git push origin HEAD
+          else
+            echo "mirror already current"
+          fi
+
+      - name: Deploy staging (manual)
+        if: github.event_name == 'workflow_dispatch'
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
