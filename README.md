@@ -39,5 +39,5 @@ a modified GPL work, so this directory — the pinned upstream ref, the
 mirrored publicly at [eiiot/tuft-kvm-web](https://github.com/eiiot/tuft-kvm-web)
 on every deploy by the workflow's sync step.
 
-The Tuft name and mark are trademarks of Expo; their inclusion in this
+The Expo name and mark are registered trademarks; their inclusion in this
 repository is not a license to use them.
