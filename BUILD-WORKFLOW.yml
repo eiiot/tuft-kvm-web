@@ -22,7 +22,8 @@ on:
 
 concurrency:
   group: tuft-kvm-web-${{ github.ref }}
-  cancel-in-progress: true
+  # Finish the active staging deploy; GitHub keeps only the newest pending run.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/staging' }}
 
 jobs:
   build:
